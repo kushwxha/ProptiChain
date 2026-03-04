@@ -19,13 +19,19 @@ app = FastAPI(title="ProptiChain AI Service")
 
 # Input schema using Pydantic
 class PropertyInput(BaseModel):
-    area: float = Field(..., gt=0, description="Area in square feet")
     bedrooms: int = Field(..., ge=0, le=20)
     bathrooms: int = Field(..., ge=0, le=20)
-    age: int = Field(..., ge=0, le=200)
-    location: str = Field(..., description="Location category")
-    amenities_score: float = Field(..., ge=0, le=10)
-    market_trend: float = Field(..., description="Market trend indicator")
+    sqft_living: float = Field(..., gt=0, description="Living area in square feet")
+    sqft_lot: float = Field(..., gt=0, description="Lot area in square feet")
+    floors: float = Field(..., gt=0, description="Number of floors")
+    waterfront: int = Field(..., ge=0, le=1, description="Waterfront (0/1)")
+    view: int = Field(..., ge=0, le=4, description="View rating (0-4)")
+    condition: int = Field(..., ge=1, le=5, description="Condition rating (1-5)")
+    sqft_above: float = Field(..., ge=0, description="Sqft above ground")
+    sqft_basement: float = Field(..., ge=0, description="Sqft basement")
+    age: int = Field(..., ge=0, description="Property age")
+    renovated: int = Field(..., ge=0, le=1, description="Renovated (0/1)")
+    location: str = Field(..., description="City name")
 
     @validator('location')
     def location_must_not_be_empty(cls, v):
@@ -50,15 +56,8 @@ def get_confidence_interval(preds, alpha=0.05):
 def predict(input: PropertyInput):
     try:
         # Prepare input for model
-        X = [{
-            'area': input.area,
-            'bedrooms': input.bedrooms,
-            'bathrooms': input.bathrooms,
-            'age': input.age,
-            'location': input.location,
-            'amenities_score': input.amenities_score,
-            'market_trend': input.market_trend
-        }]
+        import pandas as pd
+        X = pd.DataFrame([{k: v for k, v in input.dict().items()}])
         X_proc = preprocessor.transform(X)
         # Valuation prediction
         price_pred = float(valuation_model.predict(X_proc)[0])

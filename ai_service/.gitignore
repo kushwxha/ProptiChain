@@ -54,12 +54,20 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+
 # Model and data files
 *.pkl
 *.h5
 *.csv
 *.db
 *.sqlite3
+
+# FastAPI/Uvicorn logs
+*.log
+
+# API generated artifacts
+valuation_feature_importance.png
+risk_feature_importance.png
 
 # IDEs and editors
 .vscode/

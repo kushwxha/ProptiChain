@@ -15,9 +15,33 @@ def set_seed(seed=42):
 
 # Example function to load dataset (replace with actual path or data source)
 def load_data(csv_path: str) -> pd.DataFrame:
-    """Load housing dataset from CSV file."""
+    """
+    Load housing dataset from CSV file, engineer features for valuation model.
+    - Uses columns: date, price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition, sqft_above, sqft_basement, yr_built, yr_renovated, street, city, statezip, country
+    - Engineers: age, renovated, location (city), etc.
+    """
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
     df = pd.read_csv(csv_path)
-    return df
+    # Feature engineering
+    current_year = datetime.now().year
+    df['age'] = current_year - df['yr_built']
+    df['renovated'] = (df['yr_renovated'] > 0).astype(int)
+    df['location'] = df['city']
+    # Simulate risk_label: 1 if price < median, else 0
+    price_median = df['price'].median()
+    df['risk_label'] = (df['price'] < price_median).astype(int)
+    # Select features for valuation and risk model
+    features = [
+        'bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors',
+        'waterfront', 'view', 'condition', 'sqft_above', 'sqft_basement',
+        'age', 'renovated', 'location'
+    ]
+    target_reg = 'price'
+    target_clf = 'risk_label'
+    df_model = df[features + [target_reg, target_clf]].copy()
+    return df_model
 
 # Preprocessing pipeline builder
 def build_preprocessing_pipeline(categorical_features, numerical_features):
