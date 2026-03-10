@@ -1,0 +1,32 @@
+# Environment
+node_modules/
+.env
+
+# Hardhat
+cache/
+artifacts/
+typechain-types/
+
+# Coverage
+coverage/
+coverage.json
+
+# IDE
+.vscode/
+.idea/
+
+# Deployed contract info (generated)
+backend/deploy.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+.npmrc
+*.tgz
