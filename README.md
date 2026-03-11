@@ -17,8 +17,8 @@ ProptiChain is an MVP that integrates machine learning models for property valua
   - [AI Service Setup](#ai-service-setup)
   - [Blockchain Layer Setup](#blockchain-layer-setup)
 - [API Reference](#api-reference)
-  - [AI Service API](#ai-service-api)
-  - [Blockchain API](#blockchain-api)
+  - [AI Service](#ai-service-port-8000)
+  - [Middleware API](#middleware-api-port-3001)
 - [Testing](#testing)
 - [How It Works](#how-it-works)
 - [Contributing](#contributing)
@@ -41,15 +41,19 @@ AI predictions are hashed (keccak256) and stored on-chain, ensuring that valuati
 ## Architecture
 
 ```
-┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────────┐
-│   AI Service    │       │   Blockchain API     │       │   Smart Contract    │
-│   (FastAPI)     │──────>│   (Express.js)       │──────>│   (Solidity)        │
-│   Port 8000     │       │   Port 3000          │       │   Hardhat Network   │
-└─────────────────┘       └──────────────────────┘       └─────────────────────┘
-  - Valuation Model         - Property CRUD                - ProptiChainRegistry
-  - Risk Model              - AI hash submission           - RBAC enforcement
-  - /predict endpoint       - User/role management         - Event logging
+┌──────────────┐     ┌──────────────────┐     ┌───────────────┐     ┌─────────────────┐
+│  React UI    │────>│  Middleware API   │────>│  AI Service   │     │  Smart Contract  │
+│  Port 3000   │     │  (Express.js)    │     │  (FastAPI)    │     │  (Solidity)      │
+└──────────────┘     │  Port 3001       │────>│  Port 8000    │     │  Hardhat :8545   │
+                     │                  │     └───────────────┘     └─────────────────┘
+                     │                  │────────────────────────────────────▲
+                     └──────────────────┘
 ```
+
+1. **React Frontend** — User-facing UI for property registration, AI valuation, and marketplace.
+2. **Middleware API** — Orchestrates AI predictions and blockchain writes in a single pipeline.
+3. **AI Service** — ML models for valuation (regression) and risk scoring (classification).
+4. **Smart Contract** — On-chain property registry with RBAC and immutable AI result hashes.
 
 ---
 
@@ -60,7 +64,8 @@ AI predictions are hashed (keccak256) and stored on-chain, ensuring that valuati
 | AI / ML | Python 3.12, Pandas, NumPy, Scikit-learn, FastAPI |
 | Smart Contract | Solidity 0.8.20 |
 | Blockchain Dev | Hardhat, Ethers.js v6 |
-| Backend API | Node.js, Express.js |
+| Backend API | Node.js, Express.js, Axios |
+| Frontend | React 18, React Router DOM 6 |
 | Testing | Hardhat + Chai (blockchain), Scikit-learn metrics (AI) |
 
 ---
@@ -71,13 +76,10 @@ AI predictions are hashed (keccak256) and stored on-chain, ensuring that valuati
 ProptiChain/
 │
 ├── ai_service/                    # AI/ML layer
-│   ├── app.py                     # FastAPI prediction API
+│   ├── app.py                     # FastAPI prediction API (port 8000)
 │   ├── train_models.py            # Model training script
 │   ├── preprocess.py              # Data preprocessing utilities
 │   ├── requirements.txt           # Python dependencies
-│   ├── data.csv                   # Training dataset (not committed)
-│   ├── valuation_model.pkl        # Trained valuation model (not committed)
-│   ├── risk_model.pkl             # Trained risk model (not committed)
 │   └── .gitignore
 │
 ├── smart-contract/                # Blockchain layer
@@ -87,22 +89,40 @@ ProptiChain/
 │   │   └── deploy.js
 │   ├── test/
 │   │   └── registry.test.js
-│   ├── backend/
-│   │   ├── server.js              # Express API server
-│   │   ├── blockchain.js          # Ethers.js contract helper
-│   │   ├── controllers/
-│   │   │   ├── propertyController.js
-│   │   │   ├── aiController.js
-│   │   │   └── userController.js
-│   │   └── routes/
-│   │       ├── propertyRoutes.js
-│   │       ├── aiRoutes.js
-│   │       └── userRoutes.js
 │   ├── hardhat.config.js
-│   ├── package.json
-│   └── .gitignore
+│   └── package.json
 │
-└── README.md                      # This file
+├── backend/                       # Integration middleware (port 3001)
+│   ├── server.js                  # Express API server
+│   ├── blockchain/
+│   │   └── contract.js            # Ethers.js contract helper
+│   ├── ai/
+│   │   └── aiClient.js            # Axios client for AI service
+│   ├── controllers/
+│   │   ├── propertyController.js
+│   │   ├── aiController.js
+│   │   └── userController.js
+│   ├── routes/
+│   │   ├── propertyRoutes.js
+│   │   ├── aiRoutes.js
+│   │   └── userRoutes.js
+│   └── package.json
+│
+├── frontend/                      # React UI (port 3000)
+│   ├── public/
+│   │   └── index.html
+│   ├── src/
+│   │   ├── App.js
+│   │   ├── App.css
+│   │   ├── api.js
+│   │   ├── index.js
+│   │   └── pages/
+│   │       ├── RegisterProperty.js
+│   │       ├── AIValuation.js
+│   │       └── Marketplace.js
+│   └── package.json
+│
+└── README.md
 ```
 
 ---
@@ -112,82 +132,114 @@ ProptiChain/
 ### Prerequisites
 
 - **Python 3.10–3.12** (for AI service)
-- **Node.js 18+** (for blockchain layer)
+- **Node.js 18+** (for blockchain, middleware, and frontend)
 - **npm** (comes with Node.js)
 
-### AI Service Setup
+You need **four terminals** to run the full pipeline.
+
+### Terminal 1 — AI Service (port 8000)
 
 ```bash
 cd ai_service
-
-# Create virtual environment
-python -m venv venv
-
-# Activate (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-
-# Install dependencies
-pip install --upgrade pip setuptools wheel
+.\venv\Scripts\Activate.ps1          # Windows PowerShell
 pip install -r requirements.txt
-
-# Train models
-python train_models.py
-
-# Start the AI API
+python train_models.py               # Train models (first time only)
 uvicorn app:app --reload
 ```
 
-The AI API runs at **http://localhost:8000**. Visit http://localhost:8000/docs for Swagger UI.
-
-### Blockchain Layer Setup
+### Terminal 2 — Hardhat Blockchain Node (port 8545)
 
 ```bash
 cd smart-contract
-
-# Install dependencies
 npm install
-
-# Compile the smart contract
 npx hardhat compile
-
-# Start a local blockchain (keep this terminal open)
-npx hardhat node
-
-# In a new terminal — deploy the contract
-npx hardhat run scripts/deploy.js --network localhost
-
-# Start the Express API
-node backend/server.js
+npx hardhat node                     # Keep this running
 ```
 
-The Blockchain API runs at **http://localhost:3000**.
+### Terminal 3 — Deploy & Start Middleware (port 3001)
+
+```bash
+cd smart-contract
+npx hardhat run scripts/deploy.js --network localhost
+
+cd ../backend
+npm install
+node server.js
+```
+
+### Terminal 4 — React Frontend (port 3000)
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Open **http://localhost:3000** in your browser.
+
+### First-Time Setup (after deploy)
+
+Before using the system, register roles via the middleware API (or use curl/Postman):
+
+```bash
+# SELLER (account 1)
+curl -X POST http://localhost:3001/user/register -H "Content-Type: application/json" \
+  -d '{"signerIndex":0,"userAddress":"0x70997970C51812dc3A010C7d01b50e0d17dc79C8","role":"SELLER"}'
+
+# BUYER (account 2)
+curl -X POST http://localhost:3001/user/register -H "Content-Type: application/json" \
+  -d '{"signerIndex":0,"userAddress":"0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC","role":"BUYER"}'
+
+# AI_ORACLE (account 3)
+curl -X POST http://localhost:3001/user/register -H "Content-Type: application/json" \
+  -d '{"signerIndex":0,"userAddress":"0x90F79bf6EB2c4f870365E785982E1f101E93b906","role":"AI_ORACLE"}'
+```
 
 ---
 
 ## API Reference
 
-### AI Service API
+### AI Service (port 8000)
 
-**Base URL:** `http://localhost:8000`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/predict` | Get property valuation and risk score |
 
-#### `POST /predict` — Get property valuation and risk score
+### Middleware API (port 3001)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/user/register` | Assign a role (ADMIN only) |
+| GET | `/user/role/:address` | Check user role |
+| POST | `/property/register` | Register property (SELLER) |
+| POST | `/property/list` | List property for sale (owner) |
+| POST | `/property/buy` | Purchase property (BUYER) |
+| GET | `/property/all` | List all properties |
+| GET | `/property/:id` | Get property details |
+| POST | `/ai/evaluate` | Full pipeline: AI → Hash → Blockchain |
+
+#### `POST /ai/evaluate` — Full AI + Blockchain Pipeline
 
 **Request:**
 ```json
 {
-  "bedrooms": 3,
-  "bathrooms": 2,
-  "sqft_living": 1800,
-  "sqft_lot": 4000,
-  "floors": 2,
-  "waterfront": 0,
-  "view": 1,
-  "condition": 3,
-  "sqft_above": 1500,
-  "sqft_basement": 300,
-  "age": 10,
-  "renovated": 1,
-  "location": "Seattle"
+  "signerIndex": 3,
+  "propertyId": 1,
+  "propertyData": {
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "sqft_living": 1800,
+    "sqft_lot": 4000,
+    "floors": 2,
+    "waterfront": 0,
+    "view": 1,
+    "condition": 3,
+    "sqft_above": 1500,
+    "sqft_basement": 300,
+    "age": 10,
+    "renovated": 1,
+    "location": "Seattle"
+  }
 }
 ```
 
@@ -197,73 +249,13 @@ The Blockchain API runs at **http://localhost:3000**.
   "predicted_price": 332869.17,
   "risk_score": 0.57,
   "risk_label": "High Risk",
-  "confidence_interval": [231990.0, 577950.0]
+  "confidence_interval": [231990, 577950],
+  "valuationHash": "0xabc...",
+  "riskHash": "0xdef...",
+  "blockchain_tx_valuation": "0x123...",
+  "blockchain_tx_risk": "0x456..."
 }
 ```
-
----
-
-### Blockchain API
-
-**Base URL:** `http://localhost:3000`
-
-> `signerIndex` maps to Hardhat test accounts (0 = ADMIN, 1 = SELLER, 2 = BUYER, 3 = AI_ORACLE after role setup).
-
-#### `POST /user/register` — Assign a role (ADMIN only)
-```json
-{
-  "signerIndex": 0,
-  "userAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-  "role": "SELLER"
-}
-```
-
-#### `POST /property/register` — Register a property (SELLER)
-```json
-{
-  "signerIndex": 1,
-  "location": "Seattle",
-  "area": 1800,
-  "price": 420000
-}
-```
-
-#### `POST /ai/valuation` — Submit AI valuation hash (AI_ORACLE)
-```json
-{
-  "signerIndex": 3,
-  "propertyId": 1,
-  "valuationData": { "predicted_price": 350000 }
-}
-```
-
-#### `POST /ai/risk` — Submit AI risk hash (AI_ORACLE)
-```json
-{
-  "signerIndex": 3,
-  "propertyId": 1,
-  "riskData": { "risk_score": 0.18, "risk_label": "Low Risk" }
-}
-```
-
-#### `POST /property/list` — List property for sale (owner)
-```json
-{
-  "signerIndex": 1,
-  "propertyId": 1
-}
-```
-
-#### `POST /property/buy` — Purchase property (BUYER)
-```json
-{
-  "signerIndex": 2,
-  "propertyId": 1
-}
-```
-
-#### `GET /property/:id` — Get property details
-#### `GET /user/role/:address` — Get user role
 
 ---
 
@@ -291,13 +283,12 @@ Run `python train_models.py` to see:
 
 ## How It Works
 
-1. **ADMIN** registers users and assigns roles (SELLER, BUYER, AI_ORACLE).
-2. **SELLER** registers a property on the blockchain.
-3. **AI_ORACLE** calls the AI service (`/predict`) to get valuation and risk results.
-4. **AI_ORACLE** submits the keccak256 hash of AI results to the smart contract for immutable verification.
-5. **SELLER** lists the property for sale.
-6. **BUYER** purchases the property; ownership is transferred on-chain.
-7. All actions emit blockchain events for transparency and off-chain monitoring.
+1. **ADMIN** registers users and assigns roles (SELLER, BUYER, AI_ORACLE) via the middleware.
+2. **SELLER** registers a property on the blockchain through the React UI.
+3. **AI_ORACLE** triggers an AI evaluation — the middleware calls the AI service, receives predictions, hashes the results (keccak256), and submits both hashes to the smart contract in one request.
+4. **SELLER** lists the property for sale on the marketplace.
+5. **BUYER** purchases the property; ownership is transferred on-chain.
+6. All actions emit blockchain events for transparency and off-chain monitoring.
 
 ---
 
